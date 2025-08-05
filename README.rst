@@ -24,6 +24,7 @@ install pywin32
 Linux
 ^^^^^
 For x11 you should use `xcffib <https://github.com/tych0/xcffib>`_  (bsd license),
+Also `xpybutil <https://github.com/BurntSushi/xpybutil>`_ is required.
 
 If for some reason you have to use the python xlib bindings (gpl license), a few fixes need be added first. See `here <https://github.com/timeyyy/system_hotkey/issues/6#issuecomment-265410255>`_
 
