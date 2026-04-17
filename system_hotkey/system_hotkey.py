@@ -124,10 +124,10 @@ if os.name == 'nt':
         , "f22": win32con.VK_F22
         , "f23": win32con.VK_F23
         , "f24": win32con.VK_F24
-        , "media_play_pause": win32con.VK_MEDIA_PLAY_PAUSE
-        , "media_stop": win32con.VK_MEDIA_STOP
-        , "media_next": win32con.VK_MEDIA_NEXT_TRACK
-        , "media_previous": win32con.VK_MEDIA_PREV_TRACK
+        , "media_play_pause": 0xB3
+        , "media_stop": 0xB2
+        , "media_next": 0xB0
+        , "media_previous": 0xB1
         }
     win_modders = {
         "shift": win32con.MOD_SHIFT
@@ -285,7 +285,7 @@ class MixIn():
 
         thread safe
         '''
-        assert isinstance(hotkey, collections.Iterable) and type(hotkey) not in (str, bytes)
+        assert isinstance(hotkey, collections.abc.Iterable) and type(hotkey) not in (str, bytes)
         if self.consumer == 'callback' and not callback:
             raise TypeError('Function register requires callback argument in non sonsumer mode')
 
