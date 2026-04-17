@@ -260,7 +260,72 @@ NUMPAD_ALIASES = Aliases(
 
 thread_safe = util.CallSerializer()
 
+class SystemHotkeyConflictError(SystemRegisterError):
+    '''Raised when a hotkey is already registered by another application'''
+    pass
+
+
 class MixIn():
+    def is_registered(self, hotkey):
+        '''
+        Check if a hotkey is already registered in this instance.
+
+        Returns True if the hotkey is bound in keybinds, False otherwise.
+        '''
+        hotkey = self.order_hotkey(hotkey)
+        return tuple(hotkey) in self.keybinds
+
+    def check_conflict(self, hotkey):
+        '''
+        Check if a hotkey conflicts with an existing system-wide registration
+        (by this instance or another application).
+
+        Returns a dict:
+            {'conflict': False} if the hotkey is available
+            {'conflict': True, 'source': 'self'}  if registered by this instance
+            {'conflict': True, 'source': 'system', 'message': ...} if taken by another app
+
+        Does NOT permanently register the hotkey.
+        '''
+        assert isinstance(hotkey, collections.abc.Iterable) and type(hotkey) not in (str, bytes)
+        hotkey = self.order_hotkey(hotkey)
+
+        # Check internal bindings first
+        if tuple(hotkey) in self.keybinds:
+            return {'conflict': True, 'source': 'self'}
+
+        # Try to register at OS level, then immediately unregister
+        keycode, masks = self.parse_hotkeylist(hotkey)
+        try:
+            if os.name == 'nt':
+                test_id = util.unique_int(self.hk_ref.keys())
+                if not user32.RegisterHotKey(None, test_id, masks, keycode):
+                    return {'conflict': True, 'source': 'system',
+                            'message': 'Hotkey is in use by another application'}
+                user32.UnregisterHotKey(None, test_id)
+            else:
+                if self.use_xlib:
+                    for triv_mod in self.trivial_mods:
+                        self.xRoot.grab_key(keycode, triv_mod | masks, 1,
+                                            X.GrabModeAsync, X.GrabModeAsync)
+                    for triv_mod in self.trivial_mods:
+                        self.xRoot.ungrab_key(keycode, masks | triv_mod)
+                    self.disp.flush()
+                else:
+                    for triv_mod in self.trivial_mods:
+                        self.conn.core.GrabKeyChecked(
+                            True, self.root, triv_mod | masks, keycode,
+                            xproto.GrabMode.Async, xproto.GrabMode.Async).check()
+                    for triv_mod in self.trivial_mods:
+                        self.conn.core.UngrabKeyChecked(keycode, self.root, masks | triv_mod).check()
+        except (SystemRegisterError, Exception) as e:
+            if os.name == 'posix':
+                return {'conflict': True, 'source': 'system',
+                        'message': 'Hotkey is in use by another application: ' + str(e)}
+            raise
+
+        return {'conflict': False}
+
     @thread_safe.serialize_call(0.5)
     def register(self, hotkey, *args, callback=None, overwrite=False):
         '''
@@ -730,7 +795,7 @@ class SystemHotkey(MixIn):
         if not user32.RegisterHotKey(None, id, masks, keycode):
             keysym = self._nt_get_keysym(keycode)
             msg = 'The bind could be in use elsewhere: ' + keysym
-            raise SystemRegisterError(msg)
+            raise SystemHotkeyConflictError(msg)
 
     def _xlib_get_keycode(self, key) :
         keysym = XK.string_to_keysym(key)
@@ -769,7 +834,7 @@ class SystemHotkey(MixIn):
         except xproto.AccessError as e:
             keysym = self._xcb_get_keysym(keycode)
             msg = 'The bind could be in use elsewhere: ' + keysym
-            raise SystemRegisterError(msg) from e
+            raise SystemHotkeyConflictError(msg) from e
 
     def _xcb_get_keycode(self, key):
         return keybind.lookup_string(key)
